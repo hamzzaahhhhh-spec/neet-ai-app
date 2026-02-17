@@ -29,6 +29,7 @@ const BASE_FORMAT_DISTRIBUTION = {
 const DUPLICATE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const CACHE_TTL_SECONDS = 60 * 60 * 24;
 const SEMANTIC_SIMILARITY_THRESHOLD = 0.85;
+const ADMIN_REGENERATE_SEMANTIC_THRESHOLD = 0.93;
 const MIN_CONFIDENCE = 0.75;
 const TOPIC_CONCEPT_REPEAT_LIMIT_7D = 3;
 const MAX_DAILY_GENERATION_QUESTIONS = 100;
@@ -194,10 +195,10 @@ const addHashToRedis = async (hash) => {
   await redis.set(`qhash:${hash}`, "1", "EX", DUPLICATE_TTL_SECONDS);
 };
 
-const hasHighSemanticSimilarity = (candidateText, recentContexts, generatedTexts) => {
-  const recentHit = recentContexts.some((ctx) => semanticSimilarity(candidateText, ctx.question_text) >= SEMANTIC_SIMILARITY_THRESHOLD);
+const hasHighSemanticSimilarity = (candidateText, recentContexts, generatedTexts, threshold = SEMANTIC_SIMILARITY_THRESHOLD) => {
+  const recentHit = recentContexts.some((ctx) => semanticSimilarity(candidateText, ctx.question_text) >= threshold);
   if (recentHit) return true;
-  return generatedTexts.some((text) => semanticSimilarity(candidateText, text) >= SEMANTIC_SIMILARITY_THRESHOLD);
+  return generatedTexts.some((text) => semanticSimilarity(candidateText, text) >= threshold);
 };
 
 const mergeAdaptiveTopicWeights = (weights, adaptiveProfile, subject) => {
@@ -263,6 +264,9 @@ const hasSuccessfulGenerationLog = async (runDate) => {
 
 export const generateDailyPaper = async ({ forceDate, triggeredBy = "system", adaptiveProfile = null } = {}) => {
   const runDate = forceDate || getIstDateString();
+  const isAdminRegenerate = triggeredBy === "admin-regenerate";
+  const semanticThreshold = isAdminRegenerate ? ADMIN_REGENERATE_SEMANTIC_THRESHOLD : SEMANTIC_SIMILARITY_THRESHOLD;
+  const maxSlotAttempts = isAdminRegenerate ? 60 : 20;
   const lockKey = getGenerationLockKey(runDate);
   const lockValue = await acquireRedisLock(lockKey, GENERATION_LOCK_TTL_SECONDS);
 
@@ -320,7 +324,7 @@ export const generateDailyPaper = async ({ forceDate, triggeredBy = "system", ad
         let accepted = false;
         let slotAttempts = 0;
 
-        while (!accepted && slotAttempts < 20) {
+        while (!accepted && slotAttempts < maxSlotAttempts) {
           slotAttempts += 1;
           const aiPayload = await generateQuestionFromAi({
             subject,
@@ -369,14 +373,14 @@ export const generateDailyPaper = async ({ forceDate, triggeredBy = "system", ad
           continue;
         }
 
-        if (hasHighSemanticSimilarity(candidate.questionText, recentContexts, generatedTexts)) {
+        if (hasHighSemanticSimilarity(candidate.questionText, recentContexts, generatedTexts, semanticThreshold)) {
           rejectionStats.semanticDuplicate += 1;
           continue;
         }
 
         const conceptKey = `${subject}::${candidate.topic}::${candidate.conceptTag}`;
         const repeated = topicConceptCounts[conceptKey] || 0;
-        if (repeated >= TOPIC_CONCEPT_REPEAT_LIMIT_7D) {
+        if (!isAdminRegenerate && repeated >= TOPIC_CONCEPT_REPEAT_LIMIT_7D) {
           rejectionStats.topicRepetition += 1;
           continue;
         }
