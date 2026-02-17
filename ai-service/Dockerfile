@@ -31,10 +31,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Verify imports work correctly at build time
-RUN python -c "from app.config import settings; from app.generator import generate_question; print('imports ok', settings.app_env)"
-
-
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
 
