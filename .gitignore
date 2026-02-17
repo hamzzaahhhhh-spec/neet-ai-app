@@ -1,0 +1,29 @@
+# Node
+node_modules/
+.npm/
+
+# Build
+.next/
+dist/
+coverage/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

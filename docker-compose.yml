@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-neet_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - neet-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - neet-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=4000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-neet_db}
+      - REDIS_URL=redis://redis:6379
+      - AI_SERVICE_URL=http://ai-service:8000
+      - AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY:-change-me}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:-change-me}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - ADMIN_BOOTSTRAP_EMAIL=${ADMIN_BOOTSTRAP_EMAIL:-}
+      - ADMIN_BOOTSTRAP_PASSWORD=${ADMIN_BOOTSTRAP_PASSWORD:-}
+      - EXAM_DURATION_MINUTES=${EXAM_DURATION_MINUTES:-180}
+      - PREDICTION_MODE_ENABLED=${PREDICTION_MODE_ENABLED:-false}
+      - INACTIVITY_LIMIT_MINUTES=${INACTIVITY_LIMIT_MINUTES:-15}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    networks:
+      - neet-network
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${AI_SERVICE_PORT:-8000}:8000"
+    environment:
+      - APP_ENV=${AI_APP_ENV:-production}
+      - PORT=8000
+      - SERVICE_API_KEY=${AI_SERVICE_API_KEY:-change-me}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.75}
+      - BIOLOGY_TOPICS_JSON=${BIOLOGY_TOPICS_JSON:-[]}
+    networks:
+      - neet-network
+
+networks:
+  neet-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
