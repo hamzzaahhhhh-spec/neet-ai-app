@@ -67,6 +67,22 @@ const formatTime = (seconds: number) => {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+const istDate = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
 export default function QuizDatePage({ params }: Props) {
   const router = useRouter();
 
@@ -186,7 +202,39 @@ export default function QuizDatePage({ params }: Props) {
         setWarning((existing) => existing || "Previous session restored from autosave.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load paper");
+      const message = err instanceof Error ? err.message : "Failed to load paper";
+      const paperMissing = message.toLowerCase().includes("paper not found") || message.includes("404");
+      const today = istDate();
+
+      if (paperMissing && date !== today) {
+        try {
+          const todayPayload = await api.getTodayPaper(token, predictionMode);
+          setPaper(todayPayload);
+          setWarning(`Paper for ${date} was not available. Loaded today's paper (${today}).`);
+          setRemainingSeconds(todayPayload.settings.exam_duration_minutes * 60);
+          setExamModeEnabled(todayPayload.settings.exam_mode);
+          const init = initializeQuestionState(todayPayload.questions) as {
+            answers: Record<number, Option | null>;
+            states: Record<number, QuestionState>;
+            locked: Record<number, boolean>;
+            solutionOpen: Record<number, boolean>;
+          };
+          setAnswers(init.answers);
+          setStates(init.states);
+          setLocked(init.locked);
+          setSolutionOpen(init.solutionOpen);
+          return;
+        } catch {
+          setError("Today's paper is not generated yet. Ask admin to generate paper from Admin Panel.");
+          return;
+        }
+      }
+
+      if (paperMissing) {
+        setError("Paper is not generated yet for this date. Ask admin to regenerate from Admin Panel.");
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
