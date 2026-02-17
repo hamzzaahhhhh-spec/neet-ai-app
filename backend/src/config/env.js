@@ -39,7 +39,8 @@ const envSchema = z
     EXAM_DURATION_MINUTES: z.coerce.number().int().min(30).max(360).default(180),
     PREDICTION_MODE_ENABLED: z.string().optional().default("false"),
     INACTIVITY_LIMIT_MINUTES: z.coerce.number().int().min(5).max(60).default(15),
-    DISABLE_CRON: z.string().optional().default("false")
+    DISABLE_CRON: z.string().optional().default("false"),
+    DB_SSL_REJECT_UNAUTHORIZED: z.string().optional().default("true")
   })
   .superRefine((raw, ctx) => {
     const dbUrl = new URL(raw.DATABASE_URL);
@@ -125,5 +126,6 @@ export const env = {
   examDurationMinutes: config.EXAM_DURATION_MINUTES,
   predictionModeEnabled: config.PREDICTION_MODE_ENABLED === "true",
   inactivityLimitMinutes: config.INACTIVITY_LIMIT_MINUTES,
-  disableCron: config.DISABLE_CRON === "true"
+  disableCron: config.DISABLE_CRON === "true",
+  dbSslRejectUnauthorized: config.DB_SSL_REJECT_UNAUTHORIZED !== "false"
 };

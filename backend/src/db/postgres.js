@@ -16,7 +16,7 @@ if (isProduction && databaseUrl.searchParams.get("sslmode") !== "require") {
 
 export const pool = new Pool({
   connectionString: env.databaseUrl,
-  ssl: isProduction ? { rejectUnauthorized: true } : false
+  ssl: isProduction ? { rejectUnauthorized: env.dbSslRejectUnauthorized } : false
 });
 
 pool.on("error", (error) => {
